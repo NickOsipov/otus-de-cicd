@@ -1,0 +1,69 @@
+name: CI/CD Pipeline
+
+on:
+  push:
+    branches:
+      - main
+
+env:
+  APP_NAME: otus-de-cicd
+  DOCKERHUB_USERNAME: ${{ secrets.DOCKERHUB_USERNAME }}
+  DOCKERHUB_TOKEN: ${{ secrets.DOCKERHUB_TOKEN }}
+  IMAGE_NAME: ${{ secrets.DOCKERHUB_USERNAME }}/otus-de-cicd:${{ github.sha }}
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        name: Checkout code
+
+      - uses: docker/setup-buildx-action@v3
+        name: Set up Docker Buildx
+
+      - uses: docker/login-action@v3
+        name: Log in to Docker Hub
+        with:
+          username: ${{ env.DOCKERHUB_USERNAME }}
+          password: ${{ env.DOCKERHUB_TOKEN }}
+
+      - uses: docker/build-push-action@v6
+        name: Build and push Docker image
+        with:
+          context: .
+          push: true
+          tags: ${{ env.IMAGE_NAME }}
+
+  lint:
+    needs: build
+    runs-on: ubuntu-latest
+    steps:
+      - name: Run linters
+        run: |
+          docker pull ${{ env.IMAGE_NAME }}
+          docker run --rm ${{ env.IMAGE_NAME }} /app/scripts/linters.sh
+  
+  tests:
+    needs: lint
+    runs-on: ubuntu-latest
+    steps:
+      - name: Run tests
+        run: |
+          docker pull ${{ env.IMAGE_NAME }}
+          docker run --rm ${{ env.IMAGE_NAME }} pytest
+
+  deploy:
+    needs: tests
+    runs-on: ubuntu-latest
+    steps:
+      - name: Deploy app
+        uses: appleboy/ssh-action@v1.2.2
+        with:
+          host: ${{ secrets.SSH_HOST }}
+          username: ${{ secrets.SSH_USERNAME }}
+          key: ${{ secrets.SSH_PRIVATE_KEY }}
+          script: |
+            docker pull ${{ env.IMAGE_NAME }}
+            docker stop ${{ env.APP_NAME }} || true
+            docker rm ${{ env.APP_NAME }} || true
+            docker run -d -p 8501:8501 --name ${{ env.APP_NAME }} ${{ env.IMAGE_NAME }} 
