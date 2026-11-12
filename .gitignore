@@ -1,0 +1,11 @@
+.env
+.venv
+tmp
+.pytest_cache
+.vscode
+__pycache__
+.DS_Store
+.idea
+.ruff_cache
+.mypy_cache
+.coverage
